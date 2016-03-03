@@ -1,0 +1,30 @@
+'''
+Lauren E. Blake
+3-3-16
+Script made to complete the Numerical Stability Quiz
+'''
+
+'''Start with 1 billion and add 10^-6 to it 1 million times'''
+
+'''Load the data'''
+import numpy as np
+
+'''Make the initial array'''
+a = np.zeros(1000001)
+
+'''Check the dimensions'''
+a.shape
+
+'''Set the first value (1 billion)'''
+a[0] = 1000000000 
+
+'''Perform the addition step'''
+
+for x in range (1, 1000000):
+    a[x] = a[x-1] + 0.000001 
+
+'''Subtract 1 billion'''
+
+a[1000000] - 1000000000
+
+'''The answer should be 1 but it's not. The answer is 0.95367431640625.'''
