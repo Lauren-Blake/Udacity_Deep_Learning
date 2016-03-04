@@ -1,0 +1,386 @@
+'''
+Lauren E. Blake
+Feb 20 2016
+Udacity Deep Learning Assignment 1
+The goal of this assignment is to train our first model. At the end, we should be able to answer the question, "In the end, you should have a model trained on the notMNIST dataset, which is able to recognize a subset of English letters in different fonts. How accurately does your model predict the correct labels on the test dataset?"
+Code modified from: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/udacity/1_notmnist.ipynb
+Run code in iPython notebook
+'''
+
+'''Get libraries/dependencies'''
+
+from __future__ import print_function
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import sys
+import tarfile
+from IPython.display import display, Image
+
+'''Note: the following line was not in the original code'''
+
+from PIL import Image
+from scipy import ndimage
+from sklearn.linear_model import LogisticRegression
+from six.moves.urllib.request import urlretrieve
+from six.moves import cPickle as pickle
+
+'''Download data'''
+
+url = 'http://yaroslavvb.com/upload/notMNIST/'
+
+def maybe_download(filename, expected_bytes, force=False):
+  """Download a file if not present, and make sure it's the right size."""
+  if force or not os.path.exists(filename):
+    filename, _ = urlretrieve(url + filename, filename)
+  statinfo = os.stat(filename)
+  if statinfo.st_size == expected_bytes:
+    print('Found and verified', filename)
+  else:
+    raise Exception(
+      'Failed to verify' + filename + '. Can you get to it with a browser?')
+  return filename
+
+test_filename = maybe_download('notMNIST_small.tar.gz', 8458043)
+
+'''For some reason, the train_file did not verify. Therefore, I deleted the verification step '''
+
+def download_no_verify(filename, expected_bytes, force=True):
+  """Download a file if not present, and make sure it's the right size."""
+  if force or not os.path.exists(filename):
+    filename, _ = urlretrieve(url + filename, filename)
+  statinfo = os.stat(filename)
+  return filename
+
+train_filename = download_no_verify('notMNIST_large.tar.gz', 247336696)
+
+'''Uncompress file and see the folders containing the images'''
+
+num_classes = 10
+np.random.seed(133)
+
+def maybe_extract(filename, force=False):
+  root = os.path.splitext(os.path.splitext(filename)[0])[0]  # remove .tar.gz
+  if os.path.isdir(root) and not force:
+    # You may override by setting force=True.
+    print('%s already present - Skipping extraction of %s.' % (root, filename))
+  else:
+    print('Extracting data for %s. This may take a while. Please wait.' % root)
+    tar = tarfile.open(filename)
+    sys.stdout.flush()
+    tar.extractall()
+    tar.close()
+  data_folders = [
+    os.path.join(root, d) for d in sorted(os.listdir(root))
+    if os.path.isdir(os.path.join(root, d))]
+  if len(data_folders) != num_classes:
+    raise Exception(
+      'Expected %d folders, one per class. Found %d instead.' % (
+        num_classes, len(data_folders)))
+  print(data_folders)
+  return data_folders
+  
+train_folders = maybe_extract(train_filename)
+test_folders = maybe_extract(test_filename)
+
+''' Problem 1: Look at some of the images to see that they make sense '''
+
+image = Image.open('notMNIST_small/A/MDEtMDEtMDAudHRm.png')
+im.show()
+
+''' Convert the entire dataset into a 3D array (image index, x, y) of floating point values. Then, normalize so that mu = 0 and standard deviation ~0.5 '''
+
+image_size = 28  # Pixel width and height.
+pixel_depth = 255.0  # Number of levels per pixel.
+
+def load_letter(folder, min_num_images):
+  """Load the data for a single letter label."""
+  image_files = os.listdir(folder)
+  dataset = np.ndarray(shape=(len(image_files), image_size, image_size),
+                         dtype=np.float32)
+  image_index = 0
+  print(folder)
+  for image in os.listdir(folder):
+    image_file = os.path.join(folder, image)
+    try:
+      image_data = (ndimage.imread(image_file).astype(float) - 
+                    pixel_depth / 2) / pixel_depth
+      if image_data.shape != (image_size, image_size):
+        raise Exception('Unexpected image shape: %s' % str(image_data.shape))
+      dataset[image_index, :, :] = image_data
+      image_index += 1
+    except IOError as e:
+      print('Could not read:', image_file, ':', e, '- it\'s ok, skipping.')
+    
+  num_images = image_index
+  dataset = dataset[0:num_images, :, :]
+  if num_images < min_num_images:
+    raise Exception('Many fewer images than expected: %d < %d' %
+                    (num_images, min_num_images))
+    
+  print('Full dataset tensor:', dataset.shape)
+  print('Mean:', np.mean(dataset))
+  print('Standard deviation:', np.std(dataset))
+  return dataset
+        
+def maybe_pickle(data_folders, min_num_images_per_class, force=False):
+  dataset_names = []
+  for folder in data_folders:
+    set_filename = folder + '.pickle'
+    dataset_names.append(set_filename)
+    if os.path.exists(set_filename) and not force:
+      # You may override by setting force=True.
+      print('%s already present - Skipping pickling.' % set_filename)
+    else:
+      print('Pickling %s.' % set_filename)
+      dataset = load_letter(folder, min_num_images_per_class)
+      try:
+        with open(set_filename, 'wb') as f:
+          pickle.dump(dataset, f, pickle.HIGHEST_PROTOCOL)
+      except Exception as e:
+        print('Unable to save data to', set_filename, ':', e)
+  
+  return dataset_names
+  
+train_datasets = maybe_pickle(train_folders, 45000)
+
+'''Code output
+
+train_datasets = maybe_pickle(train_folders, 45000)
+Pickling notMNIST_large/A.pickle.
+notMNIST_large/A
+Could not read: notMNIST_large/A/RnJlaWdodERpc3BCb29rSXRhbGljLnR0Zg==.png : cannot identify image file 'notMNIST_large/A/RnJlaWdodERpc3BCb29rSXRhbGljLnR0Zg==.png' - it's ok, skipping.
+Could not read: notMNIST_large/A/SG90IE11c3RhcmQgQlROIFBvc3Rlci50dGY=.png : cannot identify image file 'notMNIST_large/A/SG90IE11c3RhcmQgQlROIFBvc3Rlci50dGY=.png' - it's ok, skipping.
+Could not read: notMNIST_large/A/Um9tYW5hIEJvbGQucGZi.png : cannot identify image file 'notMNIST_large/A/Um9tYW5hIEJvbGQucGZi.png' - it's ok, skipping.
+Full dataset tensor: (52909, 28, 28)
+Mean: -0.12825
+Standard deviation: 0.443121
+Pickling notMNIST_large/B.pickle.
+notMNIST_large/B
+Could not read: notMNIST_large/B/TmlraXNFRi1TZW1pQm9sZEl0YWxpYy5vdGY=.png : cannot identify image file 'notMNIST_large/B/TmlraXNFRi1TZW1pQm9sZEl0YWxpYy5vdGY=.png' - it's ok, skipping.
+Full dataset tensor: (52911, 28, 28)
+Mean: -0.00756303
+Standard deviation: 0.454491
+Pickling notMNIST_large/C.pickle.
+notMNIST_large/C
+Full dataset tensor: (52912, 28, 28)
+Mean: -0.142258
+Standard deviation: 0.439806
+Pickling notMNIST_large/D.pickle.
+notMNIST_large/D
+Could not read: notMNIST_large/D/VHJhbnNpdCBCb2xkLnR0Zg==.png : cannot identify image file 'notMNIST_large/D/VHJhbnNpdCBCb2xkLnR0Zg==.png' - it's ok, skipping.
+Full dataset tensor: (52911, 28, 28)
+Mean: -0.0573678
+Standard deviation: 0.455648
+Pickling notMNIST_large/E.pickle.
+notMNIST_large/E
+Full dataset tensor: (52912, 28, 28)
+Mean: -0.069899
+Standard deviation: 0.452942
+Pickling notMNIST_large/F.pickle.
+notMNIST_large/F
+Full dataset tensor: (52912, 28, 28)
+Mean: -0.125583
+Standard deviation: 0.44709
+Pickling notMNIST_large/G.pickle.
+notMNIST_large/G
+Full dataset tensor: (52912, 28, 28)
+Mean: -0.0945814
+Standard deviation: 0.44624
+Pickling notMNIST_large/H.pickle.
+notMNIST_large/H
+Full dataset tensor: (52912, 28, 28)
+Mean: -0.0685221
+Standard deviation: 0.454232
+Pickling notMNIST_large/I.pickle.
+notMNIST_large/I
+Full dataset tensor: (52912, 28, 28)
+Mean: 0.0307862
+Standard deviation: 0.468899
+Pickling notMNIST_large/J.pickle.
+notMNIST_large/J
+Full dataset tensor: (52911, 28, 28)
+Mean: -0.153358
+Standard deviation: 0.443656
+'''
+
+test_datasets = maybe_pickle(test_folders, 1800)
+
+'''Output
+
+test_datasets = maybe_pickle(test_folders, 1800)
+Pickling notMNIST_small/A.pickle.
+notMNIST_small/A
+Could not read: notMNIST_small/A/RGVtb2NyYXRpY2FCb2xkT2xkc3R5bGUgQm9sZC50dGY=.png : cannot identify image file 'notMNIST_small/A/RGVtb2NyYXRpY2FCb2xkT2xkc3R5bGUgQm9sZC50dGY=.png' - it's ok, skipping.
+Full dataset tensor: (1872, 28, 28)
+Mean: -0.132626
+Standard deviation: 0.445128
+Pickling notMNIST_small/B.pickle.
+notMNIST_small/B
+Full dataset tensor: (1873, 28, 28)
+Mean: 0.00535609
+Standard deviation: 0.457115
+Pickling notMNIST_small/C.pickle.
+notMNIST_small/C
+Full dataset tensor: (1873, 28, 28)
+Mean: -0.141521
+Standard deviation: 0.44269
+Pickling notMNIST_small/D.pickle.
+notMNIST_small/D
+Full dataset tensor: (1873, 28, 28)
+Mean: -0.0492167
+Standard deviation: 0.459759
+Pickling notMNIST_small/E.pickle.
+notMNIST_small/E
+Full dataset tensor: (1873, 28, 28)
+Mean: -0.0599148
+Standard deviation: 0.45735
+Pickling notMNIST_small/F.pickle.
+notMNIST_small/F
+Could not read: notMNIST_small/F/Q3Jvc3NvdmVyIEJvbGRPYmxpcXVlLnR0Zg==.png : cannot identify image file 'notMNIST_small/F/Q3Jvc3NvdmVyIEJvbGRPYmxpcXVlLnR0Zg==.png' - it's ok, skipping.
+Full dataset tensor: (1872, 28, 28)
+Mean: -0.118185
+Standard deviation: 0.452279
+Pickling notMNIST_small/G.pickle.
+notMNIST_small/G
+Full dataset tensor: (1872, 28, 28)
+Mean: -0.0925503
+Standard deviation: 0.449006
+Pickling notMNIST_small/H.pickle.
+notMNIST_small/H
+Full dataset tensor: (1872, 28, 28)
+Mean: -0.0586893
+Standard deviation: 0.458759
+Pickling notMNIST_small/I.pickle.
+notMNIST_small/I
+Full dataset tensor: (1872, 28, 28)
+Mean: 0.0526451
+Standard deviation: 0.471894
+Pickling notMNIST_small/J.pickle.
+notMNIST_small/J
+Full dataset tensor: (1872, 28, 28)
+Mean: -0.151689
+Standard deviation: 0.448014
+'''
+
+'''Problem 2: Display a sample of the labels and images from the ndarray.'''
+
+
+'''Problem 3: Check that the data is balanced across classes'''
+
+'''Merge and prune the data. Then, create a validation dataset for hyperparameter tuning.'''
+
+def make_arrays(nb_rows, img_size):
+  if nb_rows:
+    dataset = np.ndarray((nb_rows, img_size, img_size), dtype=np.float32)
+    labels = np.ndarray(nb_rows, dtype=np.int32)
+  else:
+    dataset, labels = None, None
+  return dataset, labels
+
+def merge_datasets(pickle_files, train_size, valid_size=0):
+  num_classes = len(pickle_files)
+  valid_dataset, valid_labels = make_arrays(valid_size, image_size)
+  train_dataset, train_labels = make_arrays(train_size, image_size)
+  vsize_per_class = valid_size // num_classes
+  tsize_per_class = train_size // num_classes
+    
+  start_v, start_t = 0, 0
+  end_v, end_t = vsize_per_class, tsize_per_class
+  end_l = vsize_per_class+tsize_per_class
+  for label, pickle_file in enumerate(pickle_files):       
+    try:
+      with open(pickle_file, 'rb') as f:
+        letter_set = pickle.load(f)
+        # let's shuffle the letters to have random validation and training set
+        np.random.shuffle(letter_set)
+        if valid_dataset is not None:
+          valid_letter = letter_set[:vsize_per_class, :, :]
+          valid_dataset[start_v:end_v, :, :] = valid_letter
+          valid_labels[start_v:end_v] = label
+          start_v += vsize_per_class
+          end_v += vsize_per_class
+                    
+        train_letter = letter_set[vsize_per_class:end_l, :, :]
+        train_dataset[start_t:end_t, :, :] = train_letter
+        train_labels[start_t:end_t] = label
+        start_t += tsize_per_class
+        end_t += tsize_per_class
+    except Exception as e:
+      print('Unable to process data from', pickle_file, ':', e)
+      raise
+    
+  return valid_dataset, valid_labels, train_dataset, train_labels
+            
+            
+train_size = 200000
+valid_size = 10000
+test_size = 10000
+
+valid_dataset, valid_labels, train_dataset, train_labels = merge_datasets(
+  train_datasets, train_size, valid_size)
+_, _, test_dataset, test_labels = merge_datasets(test_datasets, test_size)
+
+print('Training:', train_dataset.shape, train_labels.shape)
+print('Validation:', valid_dataset.shape, valid_labels.shape)
+print('Testing:', test_dataset.shape, test_labels.shape)
+
+'''Output
+
+Training: (200000, 28, 28) (200000,)
+Validation: (10000, 28, 28) (10000,)
+Testing: (10000, 28, 28) (10000,)
+'''
+
+'''Problem 4: Convince yourself that the data is still good after shuffling.'''
+
+'''Answer: the way that I approched this is to modify the randomized script below by renaming the shuffled dataset and shuffled labels and then printing the information about the new training, validation, and testing set out. As we can see, the new set has the same values as the old set. '''
+
+''''Randomize the data so that the labels are shuffled. We want the training and test distributions to match even after shuffling.'''
+
+def randomize(dataset, labels):
+  permutation = np.random.permutation(labels.shape[0])
+  shuffled_dataset = dataset[permutation,:,:]
+  shuffled_labels = labels[permutation]
+  return shuffled_dataset, shuffled_labels
+train_dataset2, train_labels2 = randomize(train_dataset, train_labels)
+test_dataset2, test_labels2 = randomize(test_dataset, test_labels)
+valid_dataset2, valid_labels2 = randomize(valid_dataset, valid_labels)
+
+print('Training:', train_dataset2.shape, train_labels2.shape)
+print('Validation:', valid_dataset2.shape, valid_labels2.shape)
+print('Testing:', test_dataset2.shape, test_labels2.shape)
+
+'''Output
+
+Training: (200000, 28, 28) (200000,)
+Validation: (10000, 28, 28) (10000,)
+Testing: (10000, 28, 28) (10000,)
+'''
+'''Save the data for later use. Note: not sure if it meant to save the permutated data or not. I am thinking not.'''
+
+pickle_file = 'notMNIST.pickle'
+
+try:
+  f = open(pickle_file, 'wb')
+  save = {
+    'train_dataset': train_dataset,
+    'train_labels': train_labels,
+    'valid_dataset': valid_dataset,
+    'valid_labels': valid_labels,
+    'test_dataset': test_dataset,
+    'test_labels': test_labels,
+    }
+  pickle.dump(save, f, pickle.HIGHEST_PROTOCOL)
+  f.close()
+except Exception as e:
+  print('Unable to save data to', pickle_file, ':', e)
+  raise
+
+statinfo = os.stat(pickle_file)
+print('Compressed pickle size:', statinfo.st_size)
+
+'''Output
+Compressed pickle size: 690800441
+
+Note: this is slightly smaller than the answer key. I think that this is why the large dataset couldn't be verified in one of the earliest steps. '''
